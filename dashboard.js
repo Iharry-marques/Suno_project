@@ -3,6 +3,7 @@
  * dashboard.js - Lógica principal para visualização por equipes com suporte a subtarefas
  */
 
+
 // Configurações globais e variáveis
 const CONFIG = {
   // Mapeamento de cores por cliente para consistência na UI
@@ -64,47 +65,6 @@ let appState = {
   showSubtasks: true, // Flag para mostrar/ocultar subtarefas
 };
 
-// Carrega as tarefas para o Frappe Gantt
-async function carregarTarefas() {
-  // Carregando os dados do arquivo JSON
-  try {
-    const response = await fetch("dados.json");
-    if (!response.ok) {
-      throw new Error(`Erro ao carregar dados: ${response.status} ${response.statusText}`);
-    }
-    const dados = await response.json();
-    // Mapeia e transforma cada tarefa para o formato do Frappe Gantt
-    const tarefas = dados.map(tarefa => ({
-      id: tarefa.TaskNumber, // ID da tarefa
-      name: tarefa.TaskTitle, // Nome da tarefa
-      start: tarefa.StartDate.split('T')[0], // Data de início
-      end: tarefa.EndDate.split('T')[0], // Data de término
-      progress: 0, // Progresso (inicialmente zero)
-      dependencies: "", // Dependências (inicialmente vazio)
-      custom_class: CONFIG.priorityClasses[tarefa.Priority] || "", // Classe personalizada para prioridade
-      // Função para gerar o conteúdo do tooltip personalizado
-      custom_popup_html: (task) => {
-        return `
-          <div class="details-container">
-            <h5>${task.name}</h5>
-            <p>Início: ${task.start}</p>
-            <p>Fim: ${task.end}</p>
-          </div>
-        `;
-      }
-    }));
-    
-        // Inicializa o Gantt após carregar e transformar os dados
-    const gantt = new Gantt("#gantt", tarefas, {
-      view_mode: "Day", // Define a visualização inicial para 'dia'
-      date_format: "YYYY-MM-DD", // Formato da data
-    });
-    return gantt; // Retorna a instância do Gantt
-  } catch (error) {
-    console.error("Erro ao carregar ou inicializar o Gantt:", error);
-    return null; // Retorna null em caso de erro
-  }
-}
 
 // Inicialização
 document.addEventListener("DOMContentLoaded", () => {
@@ -154,21 +114,12 @@ function initTaskTypeCheckboxes() {
 // Função para configurar todos os event listeners
 function setupEventListeners() {
     // Botões da timeline
-    // document
-    //   .getElementById("btn-anterior")
-    //   .addEventListener("click", () => moverTimeline(-7));
-    // document
-    //   .getElementById("btn-hoje")
-    //   .addEventListener("click", () => irParaHoje());
-    // document
-    //   .getElementById("btn-proximo")
-    //   .addEventListener("click", () => moverTimeline(7));
-    // document
-    //   .getElementById("btn-zoom-out")
-    //   .addEventListener("click", () => ajustarZoom(0.7));
-    // document
-    //   .getElementById("btn-zoom-in")
-    //   .addEventListener("click", () => ajustarZoom(1.3));
+    document.getElementById("btn-anterior").addEventListener("click", () => moverTimeline(-7));
+    document.getElementById("btn-proximo").addEventListener("click", () => moverTimeline(7));
+    document.getElementById("btn-zoom-out").addEventListener("click", () => ajustarZoom(0.7));
+    document.getElementById("btn-zoom-in").addEventListener("click", () => ajustarZoom(1.3));
+    document.getElementById("btn-fullscreen").addEventListener("click", () => configurarEventoTelaCheia());
+    
 
   // Botão de exportação
   document
@@ -202,11 +153,10 @@ async function carregarDados() {
     mostrarLoading(true);
     console.log("Carregando dados e inicializando Gantt...");
 
-    // Carrega as tarefas via carregarTarefas()
-    const gantt = await carregarTarefas();
+        // Limpa o conteúdo do #gantt antes de recriar o gráfico
+        document.getElementById('gantt').innerHTML = '';
 
-    if (gantt) {
-      // Obtém os dados processados de dentro do Gantt (se aplicável)
+      // Obtém os dados processados 
       const data = await fetch("dados.json");
       const dados = await data.json();
             appState.allData = dados.map(preprocessarDados);
@@ -219,10 +169,9 @@ async function carregarDados() {
       preencherFiltros();
       atualizarFiltros();
       mostrarNotificacao("Dados carregados", "Gantt inicializado com sucesso.", "success");
-    } else {
-      throw new Error("Erro ao inicializar o Gantt.");
-    }
+
   } catch (error) {
+
     console.error("Erro ao carregar dados:", error);
     mostrarNotificacao("Erro ao carregar dados", error.message, "error");
   } finally {
@@ -615,18 +564,19 @@ async function criarTimelineFrappe(dados) {
         if (!itemData) return "";
 
         const dataInicioFormatada = itemData.StartDate
-          ? moment(itemData.StartDate).format("DD/MM/YYYY")
+          ? moment(itemData.StartDate).format("DD/MM/YYYY") 
           : "Não definida";
         const dataFimFormatada = itemData.EndDate
-          ? moment(itemData.EndDate).format("DD/MM/YYYY")
+          ? moment(itemData.EndDate).format("DD/MM/YYYY") 
           : "Não definida";
 
         return `
           <div class="details-container">
             <h5>${task.name}</h5>
-            <p><strong>Tipo:</strong> ${itemData.TipoTarefa}</p>
             <p><strong>Cliente:</strong> ${itemData.ClientNickname || "Não definido"}</p>
             <p><strong>Responsável:</strong> ${itemData.TaskOwnerDisplayName || "Não definido"}</p>
+            <p><strong>Prioridade:</strong> ${itemData.Priority || "Não definido"}</p>
+            <p><strong>Status:</strong> ${itemData.PipelineStepTitle || "Não definido"}</p>
             <p><strong>Data Início:</strong> ${dataInicioFormatada}</p>
             <p><strong>Prazo/Fim:</strong> ${dataFimFormatada}</p>
             <p><strong>Equipe:</strong> ${itemData.TaskOwnerGroupName || "Não definida"}</p>
@@ -771,6 +721,27 @@ function configurarEventoTelaCheia() {
       document.getElementById("timeline").style.height = "800px";
       if (appState.timeline) appState.timeline.redraw();
     }
+  });
+}
+
+//Funções para os botões de controle
+function moverTimeline(dias) {
+  const gantt = document.querySelector(".gantt");
+  if (!gantt) return;
+
+  // Simula um clique para avançar ou retroceder
+  const dataAtual = moment(gantt.scrollLeft).add(dias, 'days');
+  gantt.scrollLeft = dataAtual.valueOf();
+}
+
+function ajustarZoom(escala) {
+  const gantt = document.querySelector(".gantt");
+  if (!gantt) return;
+
+  if(escala > 1){
+    gantt.change_view_mode('Day')
+  }else{
+    gantt.change_view_mode('Month')
   });
 }
 

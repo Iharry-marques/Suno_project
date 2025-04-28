@@ -94,21 +94,10 @@ document.addEventListener("DOMContentLoaded", () => {
 // Função para configurar todos os event listeners
 function setupEventListeners() {
   // Botões da timeline
-  document
-    .getElementById("btn-anterior")
-    .addEventListener("click", () => moverTimeline(-7));
-  document
-    .getElementById("btn-hoje")
-    .addEventListener("click", () => irParaHoje());
-  document
-    .getElementById("btn-proximo")
-    .addEventListener("click", () => moverTimeline(7));
-  document
-    .getElementById("btn-zoom-out")
-    .addEventListener("click", () => ajustarZoom(0.7));
-  document
-    .getElementById("btn-zoom-in")
-    .addEventListener("click", () => ajustarZoom(1.3));
+  document.getElementById("btn-anterior").addEventListener("click", () => moverGantt(-7));
+  document.getElementById("btn-proximo").addEventListener("click", () => moverGantt(7));
+  document.getElementById("btn-zoom-in").addEventListener("click", () => ajustarZoomGantt(1));
+  document.getElementById("btn-zoom-out").addEventListener("click", () => ajustarZoomGantt(0));
 
   // Botão de exportação
   document
@@ -128,12 +117,16 @@ function setupEventListeners() {
 
   // Configuração de tela cheia
   configurarEventoTelaCheia();
+
+
 }
 
 // Função principal para carregar dados
 async function carregarDados() {
   try {
     mostrarLoading(true);
+
+        document.getElementById('gantt').innerHTML = '';
 
     // Verifica se dadosJSON está disponível (deve ser declarado no arquivo dados.json)
     if (typeof dadosJSON !== "undefined" && Array.isArray(dadosJSON)) {
@@ -176,7 +169,7 @@ async function carregarDados() {
     preencherFiltros();
 
     // Atualiza a visualização com todos os dados
-    atualizarFiltros();
+    atualizarFiltros()
   } catch (error) {
     console.error("Erro ao carregar dados:", error);
     mostrarNotificacao("Erro ao carregar dados", error.message, "error");
@@ -422,6 +415,8 @@ function atualizarFiltros() {
 
     // Atualiza visualizações com projetos agrupados
     criarTimeline(appState.projectsData);
+
+    criarTimelineFrappe(appState.filteredData)
   } catch (error) {
     console.error("Erro ao filtrar dados:", error);
     mostrarNotificacao(
@@ -432,6 +427,81 @@ function atualizarFiltros() {
   } finally {
     mostrarLoading(false);
   }
+}
+
+
+async function criarTimelineFrappe(dados) {
+  const container = document.getElementById("gantt");
+  if (!container) return;
+  // Limpa o container
+  container.innerHTML = "";
+  if (!dados || dados.length === 0) {
+    container.innerHTML =
+      '<div class="alert alert-info m-3">Nenhuma tarefa encontrada para o período e filtros selecionados.</div>';
+    return;
+  }
+  try {
+    console.log("Criando timeline com Frappe Gantt...");
+    // Convertendo dados para o formato do Frappe Gantt
+    const tarefas = dados.map((item) => ({
+      id: item.TaskNumber,
+      name: item.TaskTitle,
+      start: item.StartDate,
+      end: item.EndDate,
+      progress: 0, // Progress fixo por enquanto
+      dependencies: "", // Dependências vazias por enquanto
+      custom_class: CONFIG.priorityClasses[item.Priority] || "", // Adiciona classe para prioridade
+      // Adicione o Tooltip personalizado
+      custom_popup_html: (task) => {
+        const itemData = dados.find((d) => d.TaskNumber === task.id);
+        if (!itemData) return "";
+
+        const dataInicioFormatada = itemData.StartDate
+          ? moment(itemData.StartDate).format("DD/MM/YYYY")
+          : "Não definida";
+        const dataFimFormatada = itemData.EndDate
+          ? moment(itemData.EndDate).format("DD/MM/YYYY")
+          : "Não definida";
+
+        return `
+          <div class="details-container">
+            <h5>${task.name}</h5>
+            <p><strong>Tipo:</strong> ${itemData.TipoTarefa}</p>
+            <p><strong>Cliente:</strong> ${itemData.ClientNickname || "Não definido"}</p>
+            <p><strong>Responsável:</strong> ${itemData.TaskOwnerDisplayName || "Não definido"}</p>
+            <p><strong>Prioridade:</strong> ${itemData.Priority || "Não definido"}</p>
+            <p><strong>Data Início:</strong> ${dataInicioFormatada}</p>
+            <p><strong>Prazo/Fim:</strong> ${dataFimFormatada}</p>
+            <p><strong>Equipe:</strong> ${itemData.TaskOwnerGroupName || "Não definida"}</p>
+            <p><strong>Status:</strong> ${itemData.PipelineStepTitle || "Não definido"}</p>
+          </div>
+        `;
+      },
+    }));
+    // Inicializando o Gantt
+    const gantt = new Gantt(container, tarefas, {
+      view_mode: "Day", // Exibe em dias inicialmente
+      date_format: "YYYY-MM-DD",
+    });
+
+
+        // Armazenando uma referência ao Gantt
+        window.ganttChart = gantt;
+
+  } catch (error) {
+    console.error("Erro ao criar timeline:", error);
+    container.innerHTML = `<div class="alert alert-danger m-3">Erro ao criar visualização: ${error.message}</div>`;
+  }
+}
+
+function moverGantt(dias) {
+  if (!window.ganttChart) return;
+  window.ganttChart.scroll_by(dias);
+}
+
+function ajustarZoomGantt(tipo) {
+  if (!window.ganttChart) return;
+  window.ganttChart.change_view_mode(tipo === 1 ? "Day" : "Month");
 }
 
 // Nova função para agrupar dados por projetos
