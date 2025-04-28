@@ -45,7 +45,7 @@ const CONFIG = {
     "Operações - Negócios",
     "Produção",
   ],
-  
+
   // Ícones para tipos de tarefas
   taskIcons: {
     principal: '<i class="fas fa-check-square task-icon-principal" title="Tarefa Principal"></i>',
@@ -57,17 +57,59 @@ const CONFIG = {
 let appState = {
   allData: [], // Todos os dados carregados
   filteredData: [], // Dados após aplicação de filtros
-  timeline: null, // Instância do objeto timeline
+  //timeline: null, // Instância do objeto timeline
   isLoading: false, // Flag para controle de carregamento
   tasksWithSubtasks: new Map(), // Mapa de tarefas principais e suas subtarefas
   showPrincipalTasks: true, // Flag para mostrar/ocultar tarefas principais
   showSubtasks: true, // Flag para mostrar/ocultar subtarefas
 };
 
+// Carrega as tarefas para o Frappe Gantt
+async function carregarTarefas() {
+  // Carregando os dados do arquivo JSON
+  try {
+    const response = await fetch("dados.json");
+    if (!response.ok) {
+      throw new Error(`Erro ao carregar dados: ${response.status} ${response.statusText}`);
+    }
+    const dados = await response.json();
+    // Mapeia e transforma cada tarefa para o formato do Frappe Gantt
+    const tarefas = dados.map(tarefa => ({
+      id: tarefa.TaskNumber, // ID da tarefa
+      name: tarefa.TaskTitle, // Nome da tarefa
+      start: tarefa.StartDate.split('T')[0], // Data de início
+      end: tarefa.EndDate.split('T')[0], // Data de término
+      progress: 0, // Progresso (inicialmente zero)
+      dependencies: "", // Dependências (inicialmente vazio)
+      custom_class: CONFIG.priorityClasses[tarefa.Priority] || "", // Classe personalizada para prioridade
+      // Função para gerar o conteúdo do tooltip personalizado
+      custom_popup_html: (task) => {
+        return `
+          <div class="details-container">
+            <h5>${task.name}</h5>
+            <p>Início: ${task.start}</p>
+            <p>Fim: ${task.end}</p>
+          </div>
+        `;
+      }
+    }));
+    
+        // Inicializa o Gantt após carregar e transformar os dados
+    const gantt = new Gantt("#gantt", tarefas, {
+      view_mode: "Day", // Define a visualização inicial para 'dia'
+      date_format: "YYYY-MM-DD", // Formato da data
+    });
+    return gantt; // Retorna a instância do Gantt
+  } catch (error) {
+    console.error("Erro ao carregar ou inicializar o Gantt:", error);
+    return null; // Retorna null em caso de erro
+  }
+}
+
 // Inicialização
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Iniciando dashboard...");
-  
+
   // Ajusta o ano no rodapé
   document.getElementById("ano-atual").textContent = new Date().getFullYear();
 
@@ -82,14 +124,14 @@ document.addEventListener("DOMContentLoaded", () => {
   if (subgrupoLabel) {
     subgrupoLabel.textContent = "Membros";
   }
-  
+
   // Inicializa checkboxes de filtro de tipo de tarefa, se existirem
   initTaskTypeCheckboxes();
 });
 
 // Inicializa checkboxes de filtro para tipos de tarefas
 function initTaskTypeCheckboxes() {
-  const principalCheckbox = document.getElementById("check-principal");
+    const principalCheckbox = document.getElementById("check-principal");
   const subtaskCheckbox = document.getElementById("check-subtask");
   
   if (principalCheckbox) {
@@ -111,22 +153,22 @@ function initTaskTypeCheckboxes() {
 
 // Função para configurar todos os event listeners
 function setupEventListeners() {
-  // Botões da timeline
-  document
-    .getElementById("btn-anterior")
-    .addEventListener("click", () => moverTimeline(-7));
-  document
-    .getElementById("btn-hoje")
-    .addEventListener("click", () => irParaHoje());
-  document
-    .getElementById("btn-proximo")
-    .addEventListener("click", () => moverTimeline(7));
-  document
-    .getElementById("btn-zoom-out")
-    .addEventListener("click", () => ajustarZoom(0.7));
-  document
-    .getElementById("btn-zoom-in")
-    .addEventListener("click", () => ajustarZoom(1.3));
+    // Botões da timeline
+    // document
+    //   .getElementById("btn-anterior")
+    //   .addEventListener("click", () => moverTimeline(-7));
+    // document
+    //   .getElementById("btn-hoje")
+    //   .addEventListener("click", () => irParaHoje());
+    // document
+    //   .getElementById("btn-proximo")
+    //   .addEventListener("click", () => moverTimeline(7));
+    // document
+    //   .getElementById("btn-zoom-out")
+    //   .addEventListener("click", () => ajustarZoom(0.7));
+    // document
+    //   .getElementById("btn-zoom-in")
+    //   .addEventListener("click", () => ajustarZoom(1.3));
 
   // Botão de exportação
   document
@@ -154,42 +196,32 @@ function setupEventListeners() {
   configurarEventoTelaCheia();
 }
 
-// Função principal para carregar dados
+// Nova função principal para carregar dados
 async function carregarDados() {
   try {
     mostrarLoading(true);
-    console.log("Carregando dados...");
+    console.log("Carregando dados e inicializando Gantt...");
 
-    try {
-      const response = await fetch("dados.json");
-      if (response.ok) {
-        const dados = await response.json();
-        console.log(`Dados carregados: ${dados.length} registros`);
-        appState.allData = dados.map(preprocessarDados);
+    // Carrega as tarefas via carregarTarefas()
+    const gantt = await carregarTarefas();
 
-        // Organiza as tarefas e subtarefas
-        organizarTarefasESubtarefas();
+    if (gantt) {
+      // Obtém os dados processados de dentro do Gantt (se aplicável)
+      const data = await fetch("dados.json");
+      const dados = await data.json();
+            appState.allData = dados.map(preprocessarDados);
 
-        // Processa as datas de subtarefas
-        processarDatasDeSubtarefas();
+      // Organiza e processa os dados
+      organizarTarefasESubtarefas();
+      processarDatasDeSubtarefas();
 
-        mostrarNotificacao(
-          "Dados carregados com sucesso",
-          `${appState.allData.length} tarefas carregadas.`,
-          "success"
-        );
-      } else {
-        throw new Error(`Erro ao carregar dados: ${response.status} ${response.statusText}`);
-      }
-    } catch (fetchError) {
-      throw new Error(`Falha ao carregar dados: ${fetchError.message}`);
+      // Preenche e atualiza os filtros
+      preencherFiltros();
+      atualizarFiltros();
+      mostrarNotificacao("Dados carregados", "Gantt inicializado com sucesso.", "success");
+    } else {
+      throw new Error("Erro ao inicializar o Gantt.");
     }
-
-    // Preenche os seletores de filtro
-    preencherFiltros();
-
-    // Atualiza a visualização com todos os dados
-    atualizarFiltros();
   } catch (error) {
     console.error("Erro ao carregar dados:", error);
     mostrarNotificacao("Erro ao carregar dados", error.message, "error");
@@ -202,7 +234,7 @@ async function carregarDados() {
 function organizarTarefasESubtarefas() {
   // Limpa o mapa existente
   appState.tasksWithSubtasks.clear();
-  
+
   // Primeiro, identificamos todas as tarefas principais (com TipoTarefa = "Principal")
   const tarefasPrincipais = appState.allData.filter(tarefa => tarefa.TipoTarefa === "Principal");
   
@@ -213,7 +245,7 @@ function organizarTarefasESubtarefas() {
       const subtarefas = appState.allData.filter(
         subtarefa => subtarefa.ParentTaskID === tarefaPrincipal.TaskNumber
       );
-      
+
       // Armazena no mapa
       appState.tasksWithSubtasks.set(tarefaPrincipal.TaskNumber, {
         principal: tarefaPrincipal,
@@ -233,7 +265,7 @@ function processarDatasDeSubtarefas() {
   appState.tasksWithSubtasks.forEach((taskGroup, taskNumber) => {
     const tarefaPrincipal = taskGroup.principal;
     const subtarefas = taskGroup.subtarefas;
-    
+
     // Se não houver subtarefas, não há necessidade de ajuste
     if (subtarefas.length === 0) return;
     
@@ -245,7 +277,7 @@ function processarDatasDeSubtarefas() {
       const taskDate = task.StartDate ? new Date(task.StartDate) : null;
       return (taskDate && (!earliest || taskDate < earliest)) ? taskDate : earliest;
     }, null);
-    
+
     const ultimaData = todasTarefas.reduce((latest, task) => {
       // Prioridade: EndDate > CurrentDueDate
       const taskDate = task.EndDate 
@@ -272,7 +304,7 @@ function processarDatasDeSubtarefas() {
       if (!subtarefa.StartDate && tarefaPrincipal.StartDate) {
         subtarefa.StartDate = tarefaPrincipal.StartDate;
       }
-      
+
       // Se a subtarefa não tiver data de fim, usa uma das datas da tarefa principal
       if (!subtarefa.EndDate) {
         subtarefa.adjustedDueDate = tarefaPrincipal.EndDate || tarefaPrincipal.CurrentDueDate;
@@ -296,7 +328,7 @@ function preprocessarDados(item) {
       processado.TaskOwnerGroup = partes[0];
       processado.TaskOwnerSubgroup = partes.slice(1).join(' / ');
     } else {
-      processado.TaskOwnerGroup = processado.TaskOwnerGroupName;
+            processado.TaskOwnerGroup = processado.TaskOwnerGroupName;
       processado.TaskOwnerSubgroup = '';
     }
     
@@ -349,7 +381,7 @@ function preprocessarDados(item) {
   garantirFormatoData("StartDate");
   garantirFormatoData("EndDate");
   garantirFormatoData("CurrentDueDate");
-
+        
   // Extrai a versão para exibição
   processado.VersionDisplay = processado.Version || "";
   
@@ -435,7 +467,7 @@ function atualizarSubgrupos() {
         t.TaskOwnerGroupName.toUpperCase().includes(grupoPrincipal.toUpperCase()))
     );
   });
-
+        
   // Obtém lista única de responsáveis do grupo
   const membros = [
     ...new Set(
@@ -473,7 +505,7 @@ function atualizarFiltros() {
       // Verifica a data de início ou fim
       const dataInicio = item.StartDate ? new Date(item.StartDate) : null;
       const dataFim = item.EndDate ? new Date(item.EndDate) : null;
-      
+
       // Se pelo menos uma das datas é mais recente que o limite
       const dataOk = (dataInicio && dataInicio >= limite) || (dataFim && dataFim >= limite);
 
@@ -511,7 +543,7 @@ function atualizarFiltros() {
         (item) => item.TaskOwnerDisplayName === membro
       );
     }
-    
+
     // Filtro por tipo de tarefa (principal ou subtarefa)
     // Verifica os checkboxes, se existirem
     const principalCheckbox = document.getElementById("check-principal");
@@ -522,7 +554,7 @@ function atualizarFiltros() {
     }
     
     if (subtaskCheckbox !== null) {
-      appState.showSubtasks = subtaskCheckbox.checked;
+            appState.showSubtasks = subtaskCheckbox.checked;
     }
     
     // Aplica filtros de tipo de tarefa
@@ -542,12 +574,12 @@ function atualizarFiltros() {
     );
 
     // Atualiza visualizações
-    criarTimeline(appState.filteredData);
+    criarTimelineFrappe(appState.filteredData);
   } catch (error) {
     console.error("Erro ao filtrar dados:", error);
-    mostrarNotificacao(
-      "Erro",
-      `Falha ao aplicar filtros: ${error.message}`,
+        mostrarNotificacao(
+            "Erro",
+            `Falha ao aplicar filtros: ${error.message}`,
       "error"
     );
   } finally {
@@ -555,369 +587,63 @@ function atualizarFiltros() {
   }
 }
 
-// Cria a visualização de timeline com os dados filtrados
-function criarTimeline(dados) {
-  const container = document.getElementById("timeline");
+// Função para criar a timeline com Frappe Gantt
+async function criarTimelineFrappe(dados) {
+  const container = document.getElementById("gantt");
   if (!container) return;
-
   // Limpa o container
   container.innerHTML = "";
-
-  // Verifica se há dados
   if (!dados || dados.length === 0) {
     container.innerHTML =
       '<div class="alert alert-info m-3">Nenhuma tarefa encontrada para o período e filtros selecionados.</div>';
     return;
   }
-
   try {
-    console.log("Criando timeline...");
-    
-    // Determina se vamos agrupar por responsável ou por equipe
-    const grupoPrincipal = document.getElementById(
-      "grupo-principal-select"
-    ).value;
-    let grupoProperty;
-    let grupos;
+    console.log("Criando timeline com Frappe Gantt...");
+    // Convertendo dados para o formato do Frappe Gantt
+    const tarefas = dados.map((item) => ({
+      id: item.TaskNumber,
+      name: item.TaskTitle,
+      start: item.StartDate,
+      end: item.EndDate,
+      progress: 0, // Progress fixo por enquanto
+      dependencies: "", // Dependências vazias por enquanto
+      custom_class: CONFIG.priorityClasses[item.Priority] || "", // Adiciona classe para prioridade
+      // Adicione o Tooltip personalizado
+      custom_popup_html: (task) => {
+        const itemData = dados.find((d) => d.TaskNumber === task.id);
+        if (!itemData) return "";
 
-    if (grupoPrincipal !== "todos") {
-      // Se um grupo principal foi selecionado, agrupa por responsável
-      grupoProperty = "TaskOwnerDisplayName";
-      grupos = [
-        ...new Set(
-          dados
-            .map((t) => t.TaskOwnerDisplayName || "Sem responsável")
-            .filter(Boolean)
-        ),
-      ].sort();
-    } else {
-      // Se "todos" estiver selecionado, mostra todos os integrantes e suas tarefas
-      grupoProperty = "TaskOwnerDisplayName";
-      grupos = [
-        ...new Set(
-          dados
-            .map((t) => t.TaskOwnerDisplayName || "Sem responsável")
-            .filter(Boolean)
-        ),
-      ].sort();
-    }
-
-    // Cria os items para a timeline
-    const items = new vis.DataSet(
-      dados.map((item, i) => {
-        // Determina data de início e fim adequadamente
-        const inicio = item.StartDate ? item.StartDate : new Date();
-        
-        // Determina data de fim usando adjustedDueDate quando disponível
-        const fim =
-          item.adjustedDueDate ||
-          item.EndDate ||
-          moment().add(14, "days").format("YYYY-MM-DD");
-
-        // Prepara o título da tarefa com a versão
-        const titulo = item.TaskTitle || "Sem título";
-        const versao = item.VersionDisplay || ""; // Usa a versão já processada
-
-        // Determina o ícone correto baseado no tipo de tarefa
-        const icone = item.TipoTarefa === "Subtarefa" 
-          ? CONFIG.taskIcons.subtask 
-          : CONFIG.taskIcons.principal;
-
-        // Cria um título abreviado com versão destacada e ícone
-        let conteudoHtml = "";
-        if (versao) {
-          conteudoHtml = `${icone} <span style="color:#ffc801;font-weight:600;">[${versao}]</span> ${
-            titulo.length > 25 ? titulo.substring(0, 22) + "..." : titulo
-          }`;
-        } else {
-          conteudoHtml = `${icone} ${
-            titulo.length > 30 ? titulo.substring(0, 27) + "..." : titulo
-          }`;
-        }
-
-        // Formata datas para exibição
-        const dataInicioFormatada = item.StartDate
-          ? moment(item.StartDate).format("DD/MM/YYYY")
+        const dataInicioFormatada = itemData.StartDate
+          ? moment(itemData.StartDate).format("DD/MM/YYYY")
           : "Não definida";
-        const dataFimFormatada = item.EndDate
-          ? moment(item.EndDate).format("DD/MM/YYYY")
+        const dataFimFormatada = itemData.EndDate
+          ? moment(itemData.EndDate).format("DD/MM/YYYY")
           : "Não definida";
 
-        // Conteúdo do tooltip
-        let tooltipContent = `
-          <strong>${titulo}</strong>${
-          versao ? ` <span style="color:#ffc801">[${versao}]</span>` : ""
-        }<br>
-          <strong>Tipo:</strong> ${item.TipoTarefa}<br>
-          <strong>Cliente:</strong> ${item.ClientNickname || "Não definido"}<br>
-          <strong>Responsável:</strong> ${
-            item.TaskOwnerDisplayName || "Não definido"
-          }<br>
-          <strong>Data Início:</strong> ${dataInicioFormatada}<br>
-          <strong>Prazo/Fim:</strong> ${dataFimFormatada}<br>
-          <strong>Equipe:</strong> ${
-            item.TaskOwnerGroupName || "Não definida"
-          }<br>
-          <strong>Status:</strong> ${item.PipelineStepTitle || "Não definido"}
+        return `
+          <div class="details-container">
+            <h5>${task.name}</h5>
+            <p><strong>Tipo:</strong> ${itemData.TipoTarefa}</p>
+            <p><strong>Cliente:</strong> ${itemData.ClientNickname || "Não definido"}</p>
+            <p><strong>Responsável:</strong> ${itemData.TaskOwnerDisplayName || "Não definido"}</p>
+            <p><strong>Data Início:</strong> ${dataInicioFormatada}</p>
+            <p><strong>Prazo/Fim:</strong> ${dataFimFormatada}</p>
+            <p><strong>Equipe:</strong> ${itemData.TaskOwnerGroupName || "Não definida"}</p>
+            <p><strong>Status:</strong> ${itemData.PipelineStepTitle || "Não definido"}</p>
+          </div>
         `;
-        
-        // Se for uma subtarefa, adiciona informação da tarefa principal
-        if (item.TipoTarefa === "Subtarefa" && item.ParentTaskID) {
-          const tarefaPrincipal = appState.allData.find(t => t.TaskNumber === item.ParentTaskID);
-          if (tarefaPrincipal) {
-            tooltipContent += `<br><strong>Tarefa Principal:</strong> ${tarefaPrincipal.TaskTitle || tarefaPrincipal.TaskNumber}`;
-          }
-        }
-
-        // Determina o grupo para organização na timeline
-        const grupo = item.TaskOwnerDisplayName || "Sem responsável";
-        
-        // Define as classes CSS a serem aplicadas
-        let classesCSS = CONFIG.priorityClasses[item.Priority] || "";
-        
-        // Adiciona classe especial para subtarefas
-        if (item.TipoTarefa === "Subtarefa") {
-          classesCSS += " subtask-item";
-        } else {
-          classesCSS += " principal-task-item";
-        }
-
-        return {
-          id: i,
-          content: conteudoHtml,
-          start: inicio,
-          end: fim,
-          group: grupo,
-          title: tooltipContent,
-          className: classesCSS,
-          // Adiciona atributo de cor de fundo para guardar a cor original
-          dataOriginalBgColor: CONFIG.priorityClasses[item.Priority] || "",
-          // Armazena informação se é subtarefa para uso posterior
-          isSubtask: item.TipoTarefa === "Subtarefa",
-          parentTaskID: item.ParentTaskID
-        };
-      })
-    );
-
-    // Cria os grupos para a timeline
-    const visGroups = new vis.DataSet(
-      grupos.map((g) => ({ id: g, content: g }))
-    );
-
-    // Configurações da timeline
-    const options = {
-      orientation: "top",
-      stack: true,
-      editable: false,
-      horizontalScroll: true,
-      zoomKey: "ctrlKey",
-      margin: {
-        item: {
-          horizontal: 10,
-          vertical: 10,
-        },
       },
-      timeAxis: { scale: "day", step: 1 },
-      zoomMin: 1000 * 60 * 60 * 12, // Mínimo zoom: 12 horas
-      zoomMax: 1000 * 60 * 60 * 24 * 90, // Máximo zoom: 90 dias
-      start: moment().subtract(7, "days").valueOf(),
-      end: moment().add(14, "days").valueOf(),
-      height: "800px", // Timeline mais alta que no original
-      minHeight: "30px",
-      showMajorLabels: true,
-      showMinorLabels: true,
-      groupOrder: function(a, b) {
-        return a.id.localeCompare(b.id); // Ordena alfabeticamente
-      }
-    };
-
-    // Cria a timeline
-    appState.timeline = new vis.Timeline(container, items, visGroups, options);
-
-    // Evento de clique para destacar relações entre tarefas e subtarefas
-    appState.timeline.on("click", function (properties) {
-      if (properties.item) {
-        // Remove classe personalizada de todos os itens e reseta opacidade
-        const allItems = document.querySelectorAll(".vis-item");
-        allItems.forEach((item) => {
-          item.classList.remove("custom-selected");
-          item.classList.remove("related-subtask");
-          item.classList.remove("related-parent-task");
-          // Garante que todos os itens tenham opacidade 1
-          item.style.opacity = "1";
-        });
-
-        // Adiciona classe personalizada ao item clicado e define opacidade
-        setTimeout(() => {
-          const selectedItem = document.querySelector(
-            `.vis-item[data-id="${properties.item}"]`
-          );
-          if (selectedItem) {
-            // Adiciona classe personalizada
-            selectedItem.classList.add("custom-selected");
-
-            // Obtém o item de dados correspondente
-            const itemData = items.get(properties.item);
-            
-            // Reforça a classe de prioridade, caso o Vis.js tenha removido
-            if (itemData && itemData.className) {
-              // Garante que todas as classes originais estão presentes
-              const classesList = itemData.className.split(" ");
-              classesList.forEach(cls => {
-                if (cls && !selectedItem.classList.contains(cls)) {
-                  selectedItem.classList.add(cls);
-                }
-              });
-            }
-
-            // Garante opacidade 1 para o item selecionado
-            selectedItem.style.opacity = "1";
-
-            // Para itens muito pequenos, aplica um aumento de tamanho
-            const itemWidth = selectedItem.offsetWidth;
-            if (itemWidth < 50) {
-              selectedItem.style.minWidth = "150px";
-            }
-            
-            // Se for uma tarefa principal, destaca suas subtarefas
-            if (itemData && !itemData.isSubtask) {
-              const tarefa = appState.allData[properties.item];
-              if (tarefa && tarefa.TaskNumber) {
-                // Encontra os IDs de itens na timeline que são subtarefas desta tarefa
-                const subtarefaItems = items.get({
-                  filter: function(item) {
-                    return item.parentTaskID === tarefa.TaskNumber;
-                  }
-                });
-                
-                // Destaca cada subtarefa
-                subtarefaItems.forEach(subtarefaItem => {
-                  const subtarefaElement = document.querySelector(
-                    `.vis-item[data-id="${subtarefaItem.id}"]`
-                  );
-                  if (subtarefaElement) {
-                    subtarefaElement.classList.add("related-subtask");
-                  }
-                });
-              }
-            } 
-            // Se for uma subtarefa, destaca a tarefa principal
-            else if (itemData && itemData.isSubtask && itemData.parentTaskID) {
-              // Encontra o ID de item na timeline que é a tarefa principal
-              const tarefaPrincipalItems = items.get({
-                filter: function(item) {
-                  if (!item.isSubtask) {
-                    const tarefa = appState.allData[item.id];
-                    return tarefa && tarefa.TaskNumber === itemData.parentTaskID;
-                  }
-                  return false;
-                }
-              });
-              
-              // Destaca a tarefa principal
-              if (tarefaPrincipalItems.length > 0) {
-                const tarefaPrincipalElement = document.querySelector(
-                  `.vis-item[data-id="${tarefaPrincipalItems[0].id}"]`
-                );
-                if (tarefaPrincipalElement) {
-                  tarefaPrincipalElement.classList.add("related-parent-task");
-                }
-              }
-            }
-          }
-        }, 50);
-      }
+    }));
+    // Inicializando o Gantt
+    const gantt = new Gantt(container, tarefas, {
+      view_mode: "Day", // Exibe em dias inicialmente
+      date_format: "YYYY-MM-DD",
     });
-
-    // Função para monitorar e corrigir itens pequenos ou transparentes
-    function monitorarItensTimeline() {
-      // Verifica se a timeline está carregada
-      if (!appState.timeline) return;
-
-      // Seleciona todos os itens da timeline
-      const timelineItems = document.querySelectorAll(".vis-item");
-
-      // Para cada item, garante opacidade 1
-      timelineItems.forEach((item) => {
-        // Verifica se o item está com opacidade menor que 1
-        const computedStyle = getComputedStyle(item);
-        const opacity = parseFloat(computedStyle.opacity);
-
-        if (opacity < 1) {
-          item.style.opacity = "1";
-        }
-
-        // Se for um item selecionado, reforça os estilos
-        if (item.classList.contains("vis-selected")) {
-          item.style.opacity = "1";
-          // Preserva a cor de fundo original
-          const originalBackgroundColor =
-            item.style.backgroundColor ||
-            item.getAttribute("data-original-bg-color");
-          if (originalBackgroundColor) {
-            item.style.backgroundColor = originalBackgroundColor;
-          }
-        }
-      });
-    }
-
-    // Adiciona a função ao final da criação da timeline
-    setTimeout(() => {
-      // Chama a função inicialmente
-      monitorarItensTimeline();
-
-      // Configura para chamar a função a cada 500ms
-      setInterval(monitorarItensTimeline, 500);
-    }, 1000);
-
-    // Ajusta para mostrar todos os dados
-    setTimeout(() => appState.timeline.fit(), 500);
   } catch (error) {
     console.error("Erro ao criar timeline:", error);
     container.innerHTML = `<div class="alert alert-danger m-3">Erro ao criar visualização: ${error.message}</div>`;
   }
-}
-
-// Funções para controle da timeline
-function moverTimeline(dias) {
-  if (!appState.timeline) return;
-
-  const range = appState.timeline.getWindow();
-
-  appState.timeline.setWindow({
-    start: moment(range.start).add(dias, "days").valueOf(),
-    end: moment(range.end).add(dias, "days").valueOf(),
-  });
-}
-
-function irParaHoje() {
-  if (!appState.timeline) return;
-
-  const range = appState.timeline.getWindow();
-  const intervalo = range.end - range.start;
-  const hoje = moment().valueOf();
-
-  appState.timeline.setWindow({
-    start: hoje - intervalo / 2,
-    end: hoje + intervalo / 2,
-  });
-}
-
-function ajustarZoom(fator) {
-  if (!appState.timeline) return;
-
-  const range = appState.timeline.getWindow();
-  const start = new Date(range.start);
-  const end = new Date(range.end);
-  const intervalo = end - start;
-  const centro = new Date((end.getTime() + start.getTime()) / 2);
-
-  const novoIntervalo = intervalo / fator;
-
-  appState.timeline.setWindow({
-    start: new Date(centro.getTime() - novoIntervalo / 2),
-    end: new Date(centro.getTime() + novoIntervalo / 2),
-  });
 }
 
 // Exporta dados filtrados para CSV
@@ -951,7 +677,7 @@ function exportarCSV() {
       if (tarefaPrincipal) {
         tarefaPrincipalNome = tarefaPrincipal.TaskTitle || tarefaPrincipal.TaskNumber;
       }
-    }
+        }
     
     return [
       item.ClientNickname || "Não definido",
@@ -1014,13 +740,13 @@ function configurarEventoTelaCheia() {
       }
 
       // Ajusta altura da timeline
-      if (appState.timeline) {
-        setTimeout(() => {
-          const altura = window.innerHeight - 150;
-          document.getElementById("timeline").style.height = `${altura}px`;
-          appState.timeline.redraw();
-        }, 100);
-      }
+      //if (appState.timeline) {
+      //  setTimeout(() => {
+      //    const altura = window.innerHeight - 150;
+      //    document.getElementById("timeline").style.height = `${altura}px`;
+      //    appState.timeline.redraw();
+      //  }, 100);
+      //}
     } else {
       // Sai da tela cheia
       if (document.exitFullscreen) {
@@ -1031,17 +757,17 @@ function configurarEventoTelaCheia() {
         document.msExitFullscreen();
       }
 
-      // Restaura altura original
-      setTimeout(() => {
-        document.getElementById("timeline").style.height = "800px";
-        appState.timeline.redraw();
-      }, 100);
-    }
+            // Restaura altura original
+            // setTimeout(() => {
+            //   document.getElementById("timeline").style.height = "800px";
+            //   appState.timeline.redraw();
+            // }, 100);
+        }
   });
 
   // Detecta saída do modo tela cheia
   document.addEventListener("fullscreenchange", () => {
-    if (!document.fullscreenElement) {
+      if (!document.fullscreenElement) {
       document.getElementById("timeline").style.height = "800px";
       if (appState.timeline) appState.timeline.redraw();
     }
